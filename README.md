@@ -2,7 +2,7 @@
 This is a simple script that will identify all domains that are within a provided scope.
 
 ## Arguments
-![alt text](https://github.com/antroguy/DomainScoper/blob/main/images/Arguments.png)
+![alt text](https://github.com/andrew-gomez/DomainScoper/blob/main/Arguments.png)
 
 This script accepts three arguments, all of which are required.
 - ***domain_file*** - This should be a file that contains a list of all domains/subdomains. Each domain should be on its own line.
