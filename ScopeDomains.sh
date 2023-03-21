@@ -9,7 +9,7 @@ if [ "$#" -ne 3 ]; then
                                                 192.168.20.0/24
                                                 Domain
                                                 *.RootDomain"
-    echo    "           output_file     -   Output file containing all In Scope Domains"
+    echo    "           output_file_name     -   Output file name will create an In Scope, Out of Scope and Unresolved Domains file with the filename appended to the end"
     exit 1
 fi
 
@@ -24,8 +24,18 @@ domains_file=$1
 ips_file=$2
 output=$3
 
-rm -f $output
-touch $output
+inscope_output=inscope_$3
+nonresolved_output=unresolved_$3
+out_of_scope_output=out_of_scope_$3
+
+rm -f $inscope_output
+rm -f $nonresolved_output
+rm -f $out_of_scope_output
+
+touch $inscope_output
+touch $nonresolved_output
+touch $out_of_scope_output
+
 
 # Create an empty array for domains that are in scope
 in_scope_domains=()
@@ -99,13 +109,22 @@ while read -r domain; do
     if [ $in_scope = true ]; then
         echo -e "\033[32mIn Scope: ${domain} - ${ip_output}\033[0m"
         in_scope_domains+=($domain)
-        echo $domain >> $output
+        #echo $domain >> $output
     else
         echo -e "\033[31mOut of Scope: ${domain} - ${ip_output}\033[0m"
         out_of_scope_domains+=($domain)
     fi
 
 done < $domains_file
+
+#format files
+echo "Non Resolved Domains:" >> $nonresolved_output
+echo "-------------------------------------" >> $nonresolved_output
+echo "Out of Scope Domains:" >> $out_of_scope_output
+echo "-------------------------------------" >> $out_of_scope_output
+echo "In Scope Domains:" >> $inscope_output
+echo "-------------------------------------" >> $inscope_output
+
 
 echo ""
 echo "***********RESULTS***********"
@@ -114,20 +133,22 @@ echo "Non Resolved Domains:"
 echo "-------------------------------------"
 for domain in "${non_resolved_domains[@]}"; do
     echo $domain
+    echo $domain >> $nonresolved_output
 done
 echo ""
 echo "Out of Scope Domains:"
 echo "-------------------------------------"
 for domain in "${out_of_scope_domains[@]}"; do
     echo $domain
+    echo $domain >> $out_of_scope_output
 done
 echo -e "\033[32m"
 echo "In Scope Domains:"
 echo "-------------------------------------"
 for domain in "${in_scope_domains[@]}"; do
     echo $domain
+    echo $domain >> $inscope_output
 done
 echo "-------------------------------------"
 
-echo "OUTPUT HAS BEEN SAVED TO ${output}"
-
+echo "OUTPUT HAS BEEN SAVED TO ${inscope_output}, ${out_of_scope_output}, and ${nonresolved_output}"

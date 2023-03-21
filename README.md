@@ -2,7 +2,7 @@
 This is a simple script that will identify all domains that are within a provided scope.
 
 ## Arguments
-![alt text](https://github.com/antroguy/DomainScoper/blob/main/images/Arguments.png)
+![alt text](https://github.com/andrew-gomez/DomainScoper/blob/main/Arguments.png)
 
 This script accepts three arguments, all of which are required.
 - ***domain_file*** - This should be a file that contains a list of all domains/subdomains. Each domain should be on its own line.
@@ -11,9 +11,13 @@ This script accepts three arguments, all of which are required.
   - 192.168.20.0/24
   - Domain
   -  *.RootDomain
-- ***output_file*** - The name of the file where  in scope domains will be saved.
+- ***output_file*** - Output file name will create an In Scope, Out of Scope and Unresolved Domains file with the filename appended to the end
 
 **Example:**
 ```
 ./ScopeDomains.sh domains.txt Scope.txt results.txt
+
+Results 
+-----------------
+OUTPUT HAS BEEN SAVED TO inscope_results.txt, out_of_scope_results.txt, and nonresolved_results.txt
 ```
