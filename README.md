@@ -11,9 +11,13 @@ This script accepts three arguments, all of which are required.
   - 192.168.20.0/24
   - Domain
   -  *.RootDomain
-- ***output_file*** - The name of the file where  in scope domains will be saved.
+- ***output_file*** - Output file name will create an In Scope, Out of Scope and Unresolved Domains file with the filename appended to the end
 
 **Example:**
 ```
 ./ScopeDomains.sh domains.txt Scope.txt results.txt
+
+Results 
+-----------------
+OUTPUT HAS BEEN SAVED TO inscope_results.txt, out_of_scope_results.txt, and nonresolved_results.txt
 ```
