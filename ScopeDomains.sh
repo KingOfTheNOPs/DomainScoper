@@ -1,5 +1,17 @@
 #!/bin/bash
 
+if [ "$#" -ne 3 ]; then
+    echo "Usage: $0 domains_file scope_file output_file"
+    echo    "           domains_file    -   File that contains a list of Domains"
+    echo    "           scope_file      -   File that contains a list of In Scope IPs/Domains. The file format allows single IPs, IP Subnets, Domains, and Root Domains. For Example:
+                                                192.168.20.1
+                                                192.168.20.0/24
+                                                Domain
+                                                *.RootDomain"
+    echo    "           output_dir     -   Output directory will create an In Scope, Out of Scope and Unresolved Domains file with the filename appended to the end"
+    exit 1
+fi
+
 # Input files
 domain_file="$1"
 scope_file="$2"
