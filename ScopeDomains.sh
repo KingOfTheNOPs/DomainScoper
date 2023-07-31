@@ -1,154 +1,164 @@
 #!/bin/bash
-
 # check if the number of arguments is correct
 if [ "$#" -ne 3 ]; then
     echo "Usage: $0 domains_file scope_file output_file"
     echo    "           domains_file    -   File that contains a list of Domains"
-    echo    "           scope_file      -   File that contains a list of In Scope IPs/Domains. The file format allows single IPs, IP Subnets, Domains, and Root Domains. For Example:
+    echo    "           scope_file      -   File that contains a list of In Scope IPs. The file format allows single IPs or IP Subnets. For Example:
                                                 192.168.20.1
-                                                192.168.20.0/24
-                                                Domain
-                                                *.RootDomain"
-    echo    "           output_file_name     -   Output file name will create an In Scope, Out of Scope and Unresolved Domains file with the filename appended to the end"
+                                                192.168.20.0/24"
+    echo    "           output_folder_name     -   Output folder will house an In Scope, Out of Scope and Unresolved Domains file"
     exit 1
 fi
 
-# check if ipcalc is installed
-if ! [ -x "$(command -v grepcidr)" ]; then
-    echo "ipcalc not found, installing..."
-    sudo apt-get install -y grepcidr
-fi
+# Input files
+domain_file="$1"
+scope_file="$2"
+output_dir="$3"
 
-# assign input file names to variables
-domains_file=$1
-ips_file=$2
-output=$3
+# Output file names
+in_scope_file="in_scope.txt"
+out_of_scope_file="out_of_scope.txt"
+unresolved_file="unresolved.txt"
+multi_array_file="multi_array.txt"
 
-inscope_output=inscope_$3
-nonresolved_output=unresolved_$3
-out_of_scope_output=out_of_scope_$3
+rm -f "$output_dir/$in_scope_file"
+rm -f "$output_dir/$unresolved_file"
+rm -f "$output_dir/$out_of_scope_file"
+rm -f "$output_dir/$multi_array_file"
 
-rm -f $inscope_output
-rm -f $nonresolved_output
-rm -f $out_of_scope_output
+mkdir "$output_dir"
 
-touch $inscope_output
-touch $nonresolved_output
-touch $out_of_scope_output
+touch "$output_dir/$in_scope_file"
+touch "$output_dir/$unresolved_file"
+touch "$output_dir/$out_of_scope_file"
+touch "$output_dir/$multi_array_file"
 
+# DNS resolvers
+dns_resolvers=("8.8.8.8" "8.8.4.4" "208.67.222.222" "208.67.220.220")
 
-# Create an empty array for domains that are in scope
-in_scope_domains=()
-# Create an empty array for domains that are not in scope
-out_of_scope_domains=()
-#Create an empty array of unresolved IP Addresses
-non_resolved_domains=()
+# Arrays to store results
+in_scope=()
+out_of_scope=()
+unresolved=()
+multi_array=()
 
-# iterate through each domain
-while read -r domain; do
-    in_scope=false
-    resolved=false
-    ip_output=""
-    # Define a list of DNS resolvers
-    resolvers=("8.8.8.8" "8.8.4.4" "208.67.222.222" "208.67.220.220")
-    # resolvers=("8.8.8.8")
-    for resolver in "${resolvers[@]}"; do
-        ip_output=$(nslookup ${domain} ${resolver} | awk '/^Address: / { print $2 }')
-        #Validate ip_output returned a valid response
-        if [ -n "$ip_output" ]; then
-            resolved=true
-            break;
-        fi
+# Loop through each domain in the domain file
+while read -r domain || [[ -n "$domain" ]]; do
+  # Perform nslookup only if domain has not been resolved already
+  if ! grep -q "^$domain" "${output_dir}/${in_scope_file}" "${output_dir}/${out_of_scope_file}" "${output_dir}/${unresolved_file}"; then
+    resolved=0  # Flag to track if domain has been resolved
+    # Perform nslookup for each DNS resolver
+    for resolver in "${dns_resolvers[@]}"; do
+      nslookup_output=$(nslookup "$domain" "$resolver" | awk '/^Address: / { print $2 }' )
+      ipv4_addresses=$(echo "$nslookup_output" | grep -E -o '([0-9]{1,3}\.){3}[0-9]{1,3}')
+
+      # Check if any IPv4 addresses were resolved
+      if [ -n "$ipv4_addresses" ]; then
+        resolved=1  # Set resolved flag to true
+        # Loop through each resolved IPv4 address
+        while read -r ipv4_address || [[ -n "$ipv4_address" ]]; do
+          # Check if the resolved IPv4 address falls within the scope
+          grep_result=$(grep -w "$ipv4_address" "$scope_file")
+          if [ -n "$grep_result" ]; then
+            # Add to in_scope array
+            in_scope+=("$domain - $ipv4_address")
+          else
+            # Add to out_of_scope array
+            out_of_scope+=("$domain - $ipv4_address")
+          fi
+        done <<< "$ipv4_addresses"
+      else
+        # Add to unresolved array
+        unresolved+=("$domain")
+      fi
     done
 
-    if [[ $resolved == true ]]; then
-        if ! [[ $ip_output =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
-            echo -e "\033[31mError: ${domain} did not produce a valid IPv4 address\033[0m"
-            non_resolved_domains+=($domain)
-            continue
-        fi
+    # Print status update when domain is finished being tested
+    if [ "$resolved" -eq 1 ]; then
+      if [ "${#in_scope[@]}" -gt 0 ]; then
+        echo -e "\033[32mDomain: $domain, Status: Resolved (In Scope)"
+      else
+        echo -e "\033[31mDomain: $domain, Status: Resolved (Out of Scope)"
+      fi
     else
-        echo -e "\033[31mError: Failed to resolve IP for domain ${domain}\033[0m"
-        non_resolved_domains+=($domain)
-        continue
+      echo -e "\033[31mDomain: $domain, Status: Unresolved"
     fi
+  fi
+done < "$domain_file"
 
-    # check if domain is within scope list
-    while read -r ip_subnet; do
-        if [ ! -z $(grep -x ${domain} ${ips_file}) ]; then
-            in_scope=true
-            break
-        fi
-        # check if the IP is a single IP, a subnet or a root domain
-        if echo $ip_subnet | grep -q '/'; then
-            # IP is a subnet
-            grepcidr_output=$( grepcidr ${ip_subnet} <(echo ${ip_output}))
-            if [[ -n $grepcidr_output ]]; then
-                in_scope=true
-                break
-            fi
-
-        elif [[ ${ip_subnet} == "*"* ]]; then
-            ip_subnet_root="${ip_subnet#*.}"
-            if [[ $domain == *$ip_subnet_root ]] || [[ $domain == $ip_subnet_root ]]; then
-                # IP is a root domain
-                in_scope=true
-                break
-            fi
-        else
-            # IP is a single IP
-            if [[ $ip_output == $ip_subnet ]]; then
-                in_scope=true
-                break
-            fi
-
-        fi
-    done < $ips_file
-
-    #Check if domain was in scope
-    if [ $in_scope = true ]; then
-        echo -e "\033[32mIn Scope: ${domain} - ${ip_output}\033[0m"
-        in_scope_domains+=($domain)
-        #echo $domain >> $output
-    else
-        echo -e "\033[31mOut of Scope: ${domain} - ${ip_output}\033[0m"
-        out_of_scope_domains+=($domain)
+# Check for multi_array
+for domain_in_scope in "${in_scope[@]}"; do
+  for domain_out_of_scope in "${out_of_scope[@]}"; do
+    if [[ "$domain_in_scope" == *"${domain_out_of_scope%% -*}"* ]]; then
+      multi_array+=("${domain_out_of_scope%% -*}")
     fi
+  done
+done
 
-done < $domains_file
+# Create output directory if it doesn't exist
+mkdir -p "$output_dir"
 
-#format files
-echo "Non Resolved Domains:" >> $nonresolved_output
-echo "-------------------------------------" >> $nonresolved_output
-echo "Out of Scope Domains:" >> $out_of_scope_output
-echo "-------------------------------------" >> $out_of_scope_output
-echo "In Scope Domains:" >> $inscope_output
-echo "-------------------------------------" >> $inscope_output
+# sort unique each array
+sorted_unresolved=()
+for entry in "${unresolved[@]}"; do
+  # Check if the entry is not already in the unique_entries array
+  if [[ ! " ${sorted_unresolved[@]} " =~ " ${entry} " ]]; then
+    sorted_unresolved+=("$entry") # Add the entry to the unique_entries array
+  fi
+done
+sorted_out_of_scope=()
+for entry in "${out_of_scope[@]}"; do
+  # Check if the entry is not already in the unique_entries array
+  if [[ ! " ${sorted_out_of_scope[@]} " =~ " ${entry} " ]]; then
+    sorted_out_of_scope+=("$entry") # Add the entry to the unique_entries array
+  fi
+done
+sorted_in_scope=()
+for entry in "${in_scope[@]}"; do
+  # Check if the entry is not already in the unique_entries array
+  if [[ ! " ${sorted_in_scope[@]} " =~ " ${entry} " ]]; then
+    sorted_in_scope+=("$entry") # Add the entry to the unique_entries array
+  fi
+done
+sorted_multi_array=()
+for entry in "${multi_array[@]}"; do
+  # Check if the entry is not already in the unique_entries array
+  if [[ ! " ${sorted_multi_array[@]} " =~ " ${entry} " ]]; then
+    sorted_multi_array+=("$entry") # Add the entry to the unique_entries array
+  fi
+done
 
 
+# Print and write to files
 echo ""
 echo "***********RESULTS***********"
 echo -e "\033[31m"
 echo "Non Resolved Domains:"
 echo "-------------------------------------"
-for domain in "${non_resolved_domains[@]}"; do
+for domain in "${sorted_unresolved[@]}"; do
     echo $domain
-    echo $domain >> $nonresolved_output
+    echo $domain >> "$output_dir/$unresolved_file"
 done
 echo ""
 echo "Out of Scope Domains:"
 echo "-------------------------------------"
-for domain in "${out_of_scope_domains[@]}"; do
+for domain in "${sorted_out_of_scope[@]}"; do
     echo $domain
-    echo $domain >> $out_of_scope_output
+    echo $domain >> "$output_dir/$out_of_scope_file"
 done
 echo -e "\033[32m"
 echo "In Scope Domains:"
 echo "-------------------------------------"
-for domain in "${in_scope_domains[@]}"; do
+for domain in "${sorted_in_scope[@]}"; do
     echo $domain
-    echo $domain >> $inscope_output
+    echo $domain >> "$output_dir/$in_scope_file"
 done
 echo "-------------------------------------"
-
-echo "OUTPUT HAS BEEN SAVED TO ${inscope_output}, ${out_of_scope_output}, and ${nonresolved_output}"
+echo -e "\033[32m"
+echo "Domains with both In Scope and Out of Scope IPs:"
+echo "-------------------------------------"
+for domain in "${sorted_multi_array[@]}"; do
+    echo $domain
+    echo $domain >> "$output_dir/$multi_array_file"
+done
+echo "-------------------------------------"
